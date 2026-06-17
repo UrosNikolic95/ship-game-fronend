@@ -108,14 +108,14 @@
 .cargo li.empty {
   opacity: 0.4;
 }
-.cargo .qty,
+.cargo .quantity,
 .cargo .avg {
   font-variant-numeric: tabular-nums;
   text-align: right;
   min-width: 3.2rem;
 }
 .cargo li.head .avg,
-.cargo li.head .qty {
+.cargo li.head .quantity {
   text-align: right;
 }
 
@@ -174,11 +174,11 @@
   font-weight: 600;
   color: var(--teal);
 }
-.qty-stepper {
+.quantity-stepper {
   font-size: 0.8rem;
   opacity: 0.85;
 }
-.qty-stepper button {
+.quantity-stepper button {
   width: 24px;
   height: 24px;
   border-radius: 6px;
@@ -189,7 +189,7 @@
   font-size: 1rem;
   line-height: 1;
 }
-.qty-stepper strong {
+.quantity-stepper strong {
   display: inline-block;
   min-width: 1.5rem;
   text-align: center;
@@ -227,6 +227,17 @@ td.name {
 }
 .price.sell {
   color: var(--teal);
+}
+.margin {
+  opacity: 0.7;
+}
+.margin.gain {
+  color: #7fd1b9;
+  opacity: 1;
+}
+.margin.loss {
+  color: #e08a8a;
+  opacity: 1;
 }
 .actions {
   white-space: nowrap;

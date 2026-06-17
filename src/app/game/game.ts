@@ -44,7 +44,7 @@ export class Game implements AfterViewInit, OnDestroy {
   // Live ship coordinates for the HUD (updated a few times per second).
   readonly shipPos = signal<{ x: number; y: number }>({ x: 0, y: 0 });
   // Quantity selected in the trade panel.
-  readonly tradeQty = signal(1);
+  readonly tradeQuantity = signal(1);
   // Whether the full-world map overlay is open.
   readonly showMap = signal(false);
 
@@ -244,9 +244,9 @@ export class Game implements AfterViewInit, OnDestroy {
   private doTrade(resource: Resource, action: 'buy' | 'sell'): void {
     const port = this.nearbyPort();
     if (!port) return;
-    const qty = this.tradeQty();
+    const quantity = this.tradeQuantity();
     this.error.set(null);
-    this.api.trade(port.id, resource, qty, action).subscribe({
+    this.api.trade(port.id, resource, quantity, action).subscribe({
       next: (s) => this.applyState(s),
       error: (e) => {
         this.error.set(e?.error?.message ?? 'Trade failed');
@@ -255,8 +255,8 @@ export class Game implements AfterViewInit, OnDestroy {
     });
   }
 
-  setQty(q: number): void {
-    this.tradeQty.set(Math.max(1, Math.min(50, Math.round(q))));
+  setQuantity(q: number): void {
+    this.tradeQuantity.set(Math.max(1, Math.min(50, Math.round(q))));
   }
 
   resetGame(): void {
@@ -273,8 +273,8 @@ export class Game implements AfterViewInit, OnDestroy {
   // Average gold paid per unit for a resource across all purchases so far.
   avgCostOf(r: Resource): number {
     const stats = this.state()?.purchases.perResource[r];
-    if (!stats || stats.qty === 0) return 0;
-    return stats.spent / stats.qty;
+    if (!stats || stats.quantity === 0) return 0;
+    return stats.spent / stats.quantity;
   }
 
   // Price helpers for the template.
@@ -283,6 +283,19 @@ export class Game implements AfterViewInit, OnDestroy {
   }
   sellPriceOf(port: Port, r: Resource): number {
     return sellPrice(port.prices[r]);
+  }
+
+  // Profit per unit if the held goods were sold here: sell price minus the
+  // average cost paid. Positive means selling now turns a profit.
+  sellMarginOf(port: Port, r: Resource): number {
+    return this.sellPriceOf(port, r) - this.avgCostOf(r);
+  }
+
+  // The sell margin as a percentage of the average cost paid.
+  sellMarginPctOf(port: Port, r: Resource): number {
+    const avg = this.avgCostOf(r);
+    if (avg === 0) return 0;
+    return (this.sellMarginOf(port, r) / avg) * 100;
   }
 
   // ---- rendering -----------------------------------------------------------

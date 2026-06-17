@@ -23,7 +23,7 @@ export interface Port {
 
 export interface PurchaseStats {
   totalSpent: number;
-  perResource: Record<Resource, { spent: number; qty: number }>;
+  perResource: Record<Resource, { spent: number; quantity: number }>;
 }
 
 export interface GameState {

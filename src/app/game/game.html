@@ -19,13 +19,13 @@
     <ul class="cargo">
       <li class="head">
         <span class="name">good</span>
-        <span class="qty">held</span>
+        <span class="quantity">held</span>
         <span class="avg">avg cost</span>
       </li>
       @for (r of resources; track r) {
         <li [class.empty]="s.ship.cargo[r] === 0">
           <span class="name">{{ r }}</span>
-          <span class="qty">{{ s.ship.cargo[r] }}</span>
+          <span class="quantity">{{ s.ship.cargo[r] }}</span>
           <span class="avg">
             {{ avgCostOf(r) > 0 ? (avgCostOf(r) | number: '1.1-1') : '—' }}
           </span>
@@ -53,11 +53,11 @@
     <div class="trade">
       <div class="trade-head">
         <span class="port-name">{{ port.name }}</span>
-        <span class="qty-stepper">
-          qty
-          <button (click)="setQty(tradeQty() - 1)">−</button>
-          <strong>{{ tradeQty() }}</strong>
-          <button (click)="setQty(tradeQty() + 1)">+</button>
+        <span class="quantity-stepper">
+          quantity
+          <button (click)="setQuantity(tradeQuantity() - 1)">−</button>
+          <strong>{{ tradeQuantity() }}</strong>
+          <button (click)="setQuantity(tradeQuantity() + 1)">+</button>
         </span>
       </div>
       <table>
@@ -66,6 +66,8 @@
             <th>good</th>
             <th>buy</th>
             <th>sell</th>
+            <th>margin</th>
+            <th>margin %</th>
             <th>held</th>
             <th></th>
           </tr>
@@ -76,13 +78,35 @@
               <td class="name">{{ r }}</td>
               <td class="price buy">{{ buyPriceOf(port, r) }}</td>
               <td class="price sell">{{ sellPriceOf(port, r) }}</td>
+              <td
+                class="margin"
+                [class.gain]="avgCostOf(r) > 0 && sellMarginOf(port, r) > 0"
+                [class.loss]="avgCostOf(r) > 0 && sellMarginOf(port, r) < 0"
+              >
+                {{
+                  avgCostOf(r) > 0
+                    ? (sellMarginOf(port, r) | number: '1.1-1')
+                    : '—'
+                }}
+              </td>
+              <td
+                class="margin"
+                [class.gain]="avgCostOf(r) > 0 && sellMarginOf(port, r) > 0"
+                [class.loss]="avgCostOf(r) > 0 && sellMarginOf(port, r) < 0"
+              >
+                {{
+                  avgCostOf(r) > 0
+                    ? (sellMarginPctOf(port, r) | number: '1.0-0') + '%'
+                    : '—'
+                }}
+              </td>
               <td class="held">{{ s.ship.cargo[r] }}</td>
               <td class="actions">
                 <button
                   class="b-buy"
                   [disabled]="
-                    s.ship.gold < buyPriceOf(port, r) * tradeQty() ||
-                    cargoUsed() + tradeQty() > s.ship.cargoCapacity
+                    s.ship.gold < buyPriceOf(port, r) * tradeQuantity() ||
+                    cargoUsed() + tradeQuantity() > s.ship.cargoCapacity
                   "
                   (click)="buy(r)"
                 >
@@ -90,7 +114,7 @@
                 </button>
                 <button
                   class="b-sell"
-                  [disabled]="s.ship.cargo[r] < tradeQty()"
+                  [disabled]="s.ship.cargo[r] < tradeQuantity()"
                   (click)="sell(r)"
                 >
                   sell

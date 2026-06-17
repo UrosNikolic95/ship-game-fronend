@@ -21,13 +21,13 @@ export class GameService {
   trade(
     portId: string,
     resource: Resource,
-    qty: number,
+    quantity: number,
     action: 'buy' | 'sell',
   ): Observable<GameState> {
     return this.http.post<GameState>(`${API}/trade`, {
       portId,
       resource,
-      qty,
+      quantity,
       action,
     });
   }
