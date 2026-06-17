@@ -1,0 +1,105 @@
+<canvas #canvas class="sea"></canvas>
+
+@if (loading()) {
+  <div class="overlay center">Loading voyage…</div>
+}
+
+@if (error()) {
+  <div class="toast">{{ error() }}</div>
+}
+
+@if (state(); as s) {
+  <!-- Top-left: ship status -->
+  <div class="hud hud-left">
+    <div class="row gold">⚓ {{ s.ship.gold }} gold</div>
+    <div class="row cargo-line">
+      <span>Cargo {{ cargoUsed() }} / {{ s.ship.cargoCapacity }}</span>
+      <span class="spent">Spent {{ s.purchases.totalSpent | number: '1.0-0' }}</span>
+    </div>
+    <ul class="cargo">
+      <li class="head">
+        <span class="name">good</span>
+        <span class="qty">held</span>
+        <span class="avg">avg cost</span>
+      </li>
+      @for (r of resources; track r) {
+        <li [class.empty]="s.ship.cargo[r] === 0">
+          <span class="name">{{ r }}</span>
+          <span class="qty">{{ s.ship.cargo[r] }}</span>
+          <span class="avg">
+            {{ avgCostOf(r) > 0 ? (avgCostOf(r) | number: '1.1-1') : '—' }}
+          </span>
+        </li>
+      }
+    </ul>
+  </div>
+
+  <!-- Top-right: controls -->
+  <div class="hud hud-right">
+    <div class="row coords">x {{ shipPos().x }} · y {{ shipPos().y }}</div>
+    <div class="btn-row">
+      <button class="btn" [class.active]="showMap()" (click)="toggleMap()">
+        {{ showMap() ? 'Close map' : 'Map' }}
+      </button>
+      <button class="btn" (click)="resetGame()">New game</button>
+    </div>
+    <div class="hint">
+      WASD / arrows to sail<br />dock at a port to trade<br />M for full map
+    </div>
+  </div>
+
+  <!-- Bottom-center: trade panel when docked -->
+  @if (nearbyPort(); as port) {
+    <div class="trade">
+      <div class="trade-head">
+        <span class="port-name">{{ port.name }}</span>
+        <span class="qty-stepper">
+          qty
+          <button (click)="setQty(tradeQty() - 1)">−</button>
+          <strong>{{ tradeQty() }}</strong>
+          <button (click)="setQty(tradeQty() + 1)">+</button>
+        </span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>good</th>
+            <th>buy</th>
+            <th>sell</th>
+            <th>held</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of resources; track r) {
+            <tr>
+              <td class="name">{{ r }}</td>
+              <td class="price buy">{{ buyPriceOf(port, r) }}</td>
+              <td class="price sell">{{ sellPriceOf(port, r) }}</td>
+              <td class="held">{{ s.ship.cargo[r] }}</td>
+              <td class="actions">
+                <button
+                  class="b-buy"
+                  [disabled]="
+                    s.ship.gold < buyPriceOf(port, r) * tradeQty() ||
+                    cargoUsed() + tradeQty() > s.ship.cargoCapacity
+                  "
+                  (click)="buy(r)"
+                >
+                  buy
+                </button>
+                <button
+                  class="b-sell"
+                  [disabled]="s.ship.cargo[r] < tradeQty()"
+                  (click)="sell(r)"
+                >
+                  sell
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

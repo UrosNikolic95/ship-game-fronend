@@ -1,1 +1,10 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global resets — the game canvas fills the viewport. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #14222e;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

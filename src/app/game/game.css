@@ -1,0 +1,252 @@
+:host {
+  --ink: #dfe7ea;
+  --panel: rgba(20, 34, 46, 0.82);
+  --border: rgba(127, 209, 185, 0.25);
+  --gold: #e0c068;
+  --teal: #7fd1b9;
+  display: block;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--ink);
+  user-select: none;
+}
+
+.sea {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.overlay.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  letter-spacing: 0.05em;
+  color: var(--teal);
+}
+
+.toast {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(160, 60, 60, 0.92);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  z-index: 10;
+}
+
+.hud {
+  position: absolute;
+  top: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  backdrop-filter: blur(4px);
+  font-size: 0.85rem;
+  min-width: 150px;
+}
+
+.hud-left {
+  left: 1rem;
+}
+.hud-right {
+  right: 1rem;
+  text-align: right;
+}
+
+.row {
+  margin-bottom: 0.35rem;
+}
+.row.gold {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 1rem;
+}
+.coords {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.cargo-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.cargo-line .spent {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.cargo {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+.cargo li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.6rem;
+  padding: 1px 0;
+  text-transform: capitalize;
+}
+.cargo li.head {
+  text-transform: uppercase;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  opacity: 0.45;
+  margin-bottom: 1px;
+}
+.cargo li.empty {
+  opacity: 0.4;
+}
+.cargo .qty,
+.cargo .avg {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 3.2rem;
+}
+.cargo li.head .avg,
+.cargo li.head .qty {
+  text-align: right;
+}
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 0.35rem 0.7rem;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.btn:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.btn.active {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: rgba(127, 209, 185, 0.12);
+}
+.btn-row {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.hint {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  opacity: 0.55;
+  line-height: 1.4;
+}
+
+.trade {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  backdrop-filter: blur(4px);
+  min-width: 360px;
+}
+
+.trade-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.port-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--teal);
+}
+.qty-stepper {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+.qty-stepper button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.qty-stepper strong {
+  display: inline-block;
+  min-width: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+th {
+  text-align: right;
+  font-weight: 500;
+  opacity: 0.5;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+th:first-child {
+  text-align: left;
+}
+td {
+  padding: 0.2rem 0.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.name {
+  text-align: left;
+  text-transform: capitalize;
+}
+.price.buy {
+  color: var(--gold);
+}
+.price.sell {
+  color: var(--teal);
+}
+.actions {
+  white-space: nowrap;
+}
+.actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  margin-left: 0.25rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #14222e;
+}
+.b-buy {
+  background: var(--gold);
+}
+.b-sell {
+  background: var(--teal);
+}
+.actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
