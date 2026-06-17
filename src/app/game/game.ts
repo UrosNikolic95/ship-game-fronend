@@ -48,6 +48,17 @@ export class Game implements AfterViewInit, OnDestroy {
   // Whether the full-world map overlay is open.
   readonly showMap = signal(false);
 
+  // Route planner: two ports picked on the map — one to buy goods at and one
+  // to sell them at — so the player can compare arbitrage margins between ports.
+  readonly buyPortId = signal<string | null>(null);
+  readonly sellPortId = signal<string | null>(null);
+  readonly buyPort = computed(
+    () => this.state()?.ports.find((p) => p.id === this.buyPortId()) ?? null,
+  );
+  readonly sellPort = computed(
+    () => this.state()?.ports.find((p) => p.id === this.sellPortId()) ?? null,
+  );
+
   readonly cargoUsed = computed(() => {
     const s = this.state();
     if (!s) return 0;
@@ -266,6 +277,7 @@ export class Game implements AfterViewInit, OnDestroy {
       this.shipY = s.ship.y;
       this.vx = this.vy = 0;
       this.nearbyPort.set(null);
+      this.clearRoute();
       this.shipPos.set({ x: Math.round(s.ship.x), y: Math.round(s.ship.y) });
     });
   }
@@ -298,6 +310,73 @@ export class Game implements AfterViewInit, OnDestroy {
     return (this.sellMarginOf(port, r) / avg) * 100;
   }
 
+  // ---- route planner -------------------------------------------------------
+
+  // Price to buy a good at the chosen "buy" port.
+  routeBuyPriceOf(r: Resource): number {
+    const port = this.buyPort();
+    return port ? buyPrice(port.prices[r]) : 0;
+  }
+
+  // Price to sell a good at the chosen "sell" port.
+  routeSellPriceOf(r: Resource): number {
+    const port = this.sellPort();
+    return port ? sellPrice(port.prices[r]) : 0;
+  }
+
+  // Profit per unit of buying at one port and selling at the other.
+  routeMarginOf(r: Resource): number {
+    return this.routeSellPriceOf(r) - this.routeBuyPriceOf(r);
+  }
+
+  // The route margin as a percentage of the buy price.
+  routeMarginPctOf(r: Resource): number {
+    const buy = this.routeBuyPriceOf(r);
+    if (buy === 0) return 0;
+    return (this.routeMarginOf(r) / buy) * 100;
+  }
+
+  clearRoute(): void {
+    this.buyPortId.set(null);
+    this.sellPortId.set(null);
+  }
+
+  // Click on the world map to pick ports: first pick is the buy port, second is
+  // the sell port. Clicking a selected port deselects it; a third pick restarts.
+  onMapClick(event: MouseEvent): void {
+    if (!this.showMap()) return;
+    const s = this.state();
+    if (!s) return;
+
+    const canvas = this.canvasRef().nativeElement;
+    const { ox, oy, scale } = this.mapTransform(
+      canvas.width,
+      canvas.height,
+      s.world.width,
+    );
+
+    const hit = s.ports.find((p) => {
+      const px = ox + p.x * scale;
+      const py = oy + p.y * scale;
+      return Math.hypot(event.offsetX - px, event.offsetY - py) <= 14;
+    });
+    if (!hit) return;
+
+    if (this.buyPortId() === hit.id) {
+      this.buyPortId.set(null);
+    } else if (this.sellPortId() === hit.id) {
+      this.sellPortId.set(null);
+    } else if (this.buyPortId() === null) {
+      this.buyPortId.set(hit.id);
+    } else if (this.sellPortId() === null) {
+      this.sellPortId.set(hit.id);
+    } else {
+      // Both already chosen — restart the selection from this port.
+      this.buyPortId.set(hit.id);
+      this.sellPortId.set(null);
+    }
+  }
+
   // ---- rendering -----------------------------------------------------------
 
   private render(): void {
@@ -327,6 +406,22 @@ export class Game implements AfterViewInit, OnDestroy {
     if (this.showMap()) this.drawMap(ctx, s, W, H);
   }
 
+  // Geometry of the square world-map panel within the viewport. Shared by the
+  // renderer and the click hit-test so they always agree on port positions.
+  private mapTransform(
+    W: number,
+    H: number,
+    worldWidth: number,
+  ): { size: number; ox: number; oy: number; scale: number } {
+    const size = Math.min(W, H) * 0.8;
+    return {
+      size,
+      ox: (W - size) / 2,
+      oy: (H - size) / 2,
+      scale: size / worldWidth,
+    };
+  }
+
   // Full-world overview: the entire map scaled to fit the screen.
   private drawMap(
     ctx: CanvasRenderingContext2D,
@@ -339,10 +434,7 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.fillRect(0, 0, W, H);
 
     // Square panel that fits the (square) world into the viewport.
-    const size = Math.min(W, H) * 0.8;
-    const ox = (W - size) / 2;
-    const oy = (H - size) / 2;
-    const scale = size / s.world.width;
+    const { size, ox, oy, scale } = this.mapTransform(W, H, s.world.width);
 
     // Panel background + border.
     ctx.fillStyle = '#14222e';
@@ -359,13 +451,47 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.fillStyle = 'rgba(223,231,234,0.5)';
     ctx.font = '12px system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('press M or Map to close', ox + size, oy - 12);
+    ctx.fillText('click ports: buy then sell · M to close', ox + size, oy - 12);
+
+    const buyId = this.buyPortId();
+    const sellId = this.sellPortId();
+
+    // Trade-route line between the two chosen ports.
+    const buyP = this.buyPort();
+    const sellP = this.sellPort();
+    if (buyP && sellP) {
+      ctx.beginPath();
+      ctx.moveTo(ox + buyP.x * scale, oy + buyP.y * scale);
+      ctx.lineTo(ox + sellP.x * scale, oy + sellP.y * scale);
+      ctx.strokeStyle = 'rgba(127,209,185,0.5)';
+      ctx.setLineDash([6, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     // Ports.
     for (const p of s.ports) {
       const px = ox + p.x * scale;
       const py = oy + p.y * scale;
-      ctx.fillStyle = '#e0c068';
+      const isBuy = p.id === buyId;
+      const isSell = p.id === sellId;
+
+      // Highlight ring + role badge for a chosen port.
+      if (isBuy || isSell) {
+        const accent = isBuy ? '#e0c068' : '#7fd1b9';
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = accent;
+        ctx.font = '700 9px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(isBuy ? 'BUY' : 'SELL', px, py + 18);
+      }
+
+      ctx.fillStyle = isSell ? '#7fd1b9' : '#e0c068';
       ctx.fillRect(px - 4, py - 4, 8, 8);
       ctx.fillStyle = '#dfe7ea';
       ctx.font = '11px system-ui, sans-serif';

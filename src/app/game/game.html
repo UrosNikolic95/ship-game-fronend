@@ -1,4 +1,9 @@
-<canvas #canvas class="sea"></canvas>
+<canvas
+  #canvas
+  class="sea"
+  [class.map-open]="showMap()"
+  (click)="onMapClick($event)"
+></canvas>
 
 @if (loading()) {
   <div class="overlay center">Loading voyage…</div>
@@ -124,6 +129,67 @@
           }
         </tbody>
       </table>
+    </div>
+  }
+
+  <!-- Route planner: compare buy/sell prices between two map-picked ports -->
+  @if (showMap()) {
+    <div class="route">
+      <div class="route-head">
+        <span class="route-title">Trade route</span>
+        @if (buyPort() || sellPort()) {
+          <button class="btn" (click)="clearRoute()">Clear</button>
+        }
+      </div>
+      <div class="route-ports">
+        <span class="route-port buy">
+          <em>buy at</em> {{ buyPort()?.name ?? 'pick a port' }}
+        </span>
+        <span class="route-port sell">
+          <em>sell at</em> {{ sellPort()?.name ?? 'pick a port' }}
+        </span>
+      </div>
+
+      @if (buyPort() && sellPort()) {
+        <table>
+          <thead>
+            <tr>
+              <th>good</th>
+              <th>buy</th>
+              <th>sell</th>
+              <th>margin</th>
+              <th>margin %</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of resources; track r) {
+              <tr>
+                <td class="name">{{ r }}</td>
+                <td class="price buy">{{ routeBuyPriceOf(r) }}</td>
+                <td class="price sell">{{ routeSellPriceOf(r) }}</td>
+                <td
+                  class="margin"
+                  [class.gain]="routeMarginOf(r) > 0"
+                  [class.loss]="routeMarginOf(r) < 0"
+                >
+                  {{ routeMarginOf(r) }}
+                </td>
+                <td
+                  class="margin"
+                  [class.gain]="routeMarginOf(r) > 0"
+                  [class.loss]="routeMarginOf(r) < 0"
+                >
+                  {{ routeMarginPctOf(r) | number: '1.0-0' }}%
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <p class="route-hint">
+          Click a port on the map to buy at, then another to sell at.
+        </p>
+      }
     </div>
   }
 }

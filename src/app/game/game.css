@@ -18,6 +18,9 @@
   inset: 0;
   display: block;
 }
+.sea.map-open {
+  cursor: pointer;
+}
 
 .overlay.center {
   position: absolute;
@@ -260,4 +263,57 @@ td.name {
 .actions button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Route planner overlay (shown alongside the world map) */
+.route {
+  position: absolute;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  backdrop-filter: blur(4px);
+  min-width: 300px;
+}
+.route-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.route-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--teal);
+}
+.route-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+.route-port em {
+  font-style: normal;
+  opacity: 0.5;
+  margin-right: 0.35rem;
+  text-transform: uppercase;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+.route-port.buy {
+  color: var(--gold);
+}
+.route-port.sell {
+  color: var(--teal);
+}
+.route-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  opacity: 0.55;
+  line-height: 1.4;
 }
