@@ -13,6 +13,7 @@ import { DecimalPipe } from '@angular/common';
 import { GameService } from './game.service';
 import {
   GameState,
+  Inventory,
   Port,
   Resource,
   RESOURCES,
@@ -59,6 +60,41 @@ export class Game implements AfterViewInit, OnDestroy {
     () => this.state()?.ports.find((p) => p.id === this.sellPortId()) ?? null,
   );
 
+  // Quantity of each good to trade along the planned route.
+  readonly routeQuantities = signal<Inventory>(emptyInventory());
+  readonly routeTotalQuantity = computed(() =>
+    RESOURCES.reduce((sum, r) => sum + this.routeQuantities()[r], 0),
+  );
+
+  // Total gold the planned purchase would cost at the buy port.
+  readonly routeCost = computed(() => {
+    const port = this.buyPort();
+    if (!port) return 0;
+    const q = this.routeQuantities();
+    return RESOURCES.reduce((sum, r) => sum + buyPrice(port.prices[r]) * q[r], 0);
+  });
+
+  // Why the route trade can't start, or null when it's good to go. Used to both
+  // block the Trade button and report the reason to the player.
+  readonly routeTradeBlock = computed<string | null>(() => {
+    const s = this.state();
+    if (!s || !this.buyPort() || this.routeTotalQuantity() <= 0) return null;
+
+    const freeSpace = s.ship.cargoCapacity - this.cargoUsed();
+    if (this.routeTotalQuantity() > freeSpace) {
+      return `Not enough cargo space — need ${this.routeTotalQuantity()}, ${freeSpace} free`;
+    }
+    if (this.routeCost() > s.ship.gold) {
+      return `Not enough gold — need ${this.routeCost()}, have ${s.ship.gold}`;
+    }
+    return null;
+  });
+
+  // Status line for the autopilot that executes a planned route, or null when
+  // no voyage is in progress.
+  readonly autopilotStatus = signal<string | null>(null);
+  readonly autopilotActive = computed(() => this.autopilot !== null);
+
   readonly cargoUsed = computed(() => {
     const s = this.state();
     if (!s) return 0;
@@ -72,6 +108,17 @@ export class Game implements AfterViewInit, OnDestroy {
   private vy = 0;
   private heading = -Math.PI / 2;
   private readonly keys = new Set<string>();
+
+  // Active route-trade voyage, or null when sailing manually. The state machine
+  // sails to the buy port, buys the planned goods, sails to the sell port, sells
+  // them, then clears itself. `busy` is true while a trade request is in flight.
+  private autopilot: {
+    buyPortId: string;
+    sellPortId: string;
+    quantities: Inventory;
+    phase: 'toBuy' | 'buying' | 'toSell' | 'selling';
+    busy: boolean;
+  } | null = null;
 
   private ctx!: CanvasRenderingContext2D;
   private rafId = 0;
@@ -129,6 +176,8 @@ export class Game implements AfterViewInit, OnDestroy {
       return;
     }
     if (MOVE_KEYS.has(k)) {
+      // Taking the helm cancels any autopilot voyage in progress.
+      if (this.autopilot) this.cancelAutopilot('Voyage cancelled');
       this.keys.add(k);
       e.preventDefault();
     }
@@ -173,17 +222,22 @@ export class Game implements AfterViewInit, OnDestroy {
     const s = this.state();
     if (!s) return;
 
-    let ax = 0;
-    let ay = 0;
-    if (this.keys.has('arrowup') || this.keys.has('w')) ay -= 1;
-    if (this.keys.has('arrowdown') || this.keys.has('s')) ay += 1;
-    if (this.keys.has('arrowleft') || this.keys.has('a')) ax -= 1;
-    if (this.keys.has('arrowright') || this.keys.has('d')) ax += 1;
+    if (this.autopilot) {
+      // Autopilot steers toward the current target port instead of the keys.
+      this.updateAutopilot(dt);
+    } else {
+      let ax = 0;
+      let ay = 0;
+      if (this.keys.has('arrowup') || this.keys.has('w')) ay -= 1;
+      if (this.keys.has('arrowdown') || this.keys.has('s')) ay += 1;
+      if (this.keys.has('arrowleft') || this.keys.has('a')) ax -= 1;
+      if (this.keys.has('arrowright') || this.keys.has('d')) ax += 1;
 
-    if (ax !== 0 || ay !== 0) {
-      const len = Math.hypot(ax, ay);
-      this.vx += (ax / len) * this.ACCEL * dt;
-      this.vy += (ay / len) * this.ACCEL * dt;
+      if (ax !== 0 || ay !== 0) {
+        const len = Math.hypot(ax, ay);
+        this.vx += (ax / len) * this.ACCEL * dt;
+        this.vy += (ay / len) * this.ACCEL * dt;
+      }
     }
 
     // Friction and speed cap.
@@ -271,6 +325,8 @@ export class Game implements AfterViewInit, OnDestroy {
   }
 
   resetGame(): void {
+    this.autopilot = null;
+    this.autopilotStatus.set(null);
     this.api.reset().subscribe((s) => {
       this.applyState(s);
       this.shipX = s.ship.x;
@@ -336,9 +392,153 @@ export class Game implements AfterViewInit, OnDestroy {
     return (this.routeMarginOf(r) / buy) * 100;
   }
 
+  // Set how many units of a good to trade along the route (clamped to 0–999).
+  setRouteQuantity(r: Resource, value: number): void {
+    const q = Math.max(0, Math.min(999, Math.round(value || 0)));
+    this.routeQuantities.update((m) => ({ ...m, [r]: q }));
+  }
+
   clearRoute(): void {
     this.buyPortId.set(null);
     this.sellPortId.set(null);
+    this.routeQuantities.set(emptyInventory());
+  }
+
+  // ---- route autopilot -----------------------------------------------------
+
+  // Begin a voyage: sail to the buy port, buy the planned goods, sail to the
+  // sell port, sell them. Closes the map so the player can watch the trip.
+  startRouteTrade(): void {
+    const buyId = this.buyPortId();
+    const sellId = this.sellPortId();
+    if (!buyId || !sellId) return;
+    if (this.routeTotalQuantity() <= 0) return;
+    if (this.autopilot) return;
+
+    // Cargo / gold are validated reactively via routeTradeBlock(), which also
+    // disables the button — bail defensively if anything blocks the voyage.
+    if (this.routeTradeBlock()) return;
+
+    this.autopilot = {
+      buyPortId: buyId,
+      sellPortId: sellId,
+      quantities: { ...this.routeQuantities() },
+      phase: 'toBuy',
+      busy: false,
+    };
+    this.keys.clear();
+    this.showMap.set(false);
+    const name = this.buyPort()?.name ?? 'port';
+    this.autopilotStatus.set(`Sailing to ${name} to buy…`);
+  }
+
+  // Steer the ship toward the current target port; on arrival, run the trades.
+  private updateAutopilot(dt: number): void {
+    const a = this.autopilot;
+    const s = this.state();
+    if (!a || !s) return;
+
+    // While a trade request is in flight, coast (friction) and wait.
+    if (a.busy) return;
+
+    const targetId = a.phase === 'toBuy' ? a.buyPortId : a.sellPortId;
+    const port = s.ports.find((p) => p.id === targetId);
+    if (!port) {
+      this.cancelAutopilot('Port no longer exists');
+      return;
+    }
+
+    const dx = port.x - this.shipX;
+    const dy = port.y - this.shipY;
+    const dist = Math.hypot(dx, dy);
+
+    // Arrived inside the dock ring — stop and trade.
+    if (dist <= DOCK_RADIUS * 0.6) {
+      this.vx = 0;
+      this.vy = 0;
+      if (a.phase === 'toBuy') {
+        a.phase = 'buying';
+        this.autopilotStatus.set(`Buying at ${port.name}…`);
+        this.runTrades(port.id, 'buy', () => {
+          if (!this.autopilot) return;
+          this.autopilot.phase = 'toSell';
+          const dest = this.state()?.ports.find((p) => p.id === a.sellPortId);
+          this.autopilotStatus.set(`Sailing to ${dest?.name ?? 'port'} to sell…`);
+        });
+      } else {
+        a.phase = 'selling';
+        this.autopilotStatus.set(`Selling at ${port.name}…`);
+        this.runTrades(port.id, 'sell', () => this.finishAutopilot());
+      }
+      return;
+    }
+
+    // Otherwise accelerate toward the target.
+    this.vx += (dx / dist) * this.ACCEL * dt;
+    this.vy += (dy / dist) * this.ACCEL * dt;
+  }
+
+  // Persist the ship's position, then trade each planned good in turn so the
+  // backend's docking check agrees before the orders go through.
+  private runTrades(
+    portId: string,
+    action: 'buy' | 'sell',
+    done: () => void,
+  ): void {
+    if (!this.autopilot) return;
+    this.autopilot.busy = true;
+    this.lastSyncedPos = { x: this.shipX, y: this.shipY };
+    this.api.move(this.shipX, this.shipY).subscribe({
+      next: () => this.tradeNext(portId, action, 0, done),
+      error: () => this.cancelAutopilot('Could not reach the port'),
+    });
+  }
+
+  private tradeNext(
+    portId: string,
+    action: 'buy' | 'sell',
+    index: number,
+    done: () => void,
+  ): void {
+    const a = this.autopilot;
+    if (!a) return;
+
+    // Skip goods with nothing to trade.
+    let i = index;
+    while (i < RESOURCES.length && a.quantities[RESOURCES[i]] <= 0) i++;
+    if (i >= RESOURCES.length) {
+      a.busy = false;
+      done();
+      return;
+    }
+
+    const r = RESOURCES[i];
+    this.api.trade(portId, r, a.quantities[r], action).subscribe({
+      next: (st) => {
+        this.applyState(st);
+        this.tradeNext(portId, action, i + 1, done);
+      },
+      error: (e) =>
+        this.cancelAutopilot(e?.error?.message ?? `Could not ${action} ${r}`),
+    });
+  }
+
+  private finishAutopilot(): void {
+    this.autopilot = null;
+    this.autopilotStatus.set('Voyage complete');
+    setTimeout(() => this.autopilotStatus.set(null), 2500);
+  }
+
+  private cancelAutopilot(message: string): void {
+    this.autopilot = null;
+    this.autopilotStatus.set(null);
+    this.flashError(message);
+  }
+
+  // Show an error toast that clears itself after a moment.
+  private flashError(message: string): void {
+    this.error.set(message);
+    setTimeout(() => this.error.set(null), 2500);
   }
 
   // Click on the world map to pick ports: first pick is the buy port, second is
@@ -621,4 +821,11 @@ const MOVE_KEYS = new Set([
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
+}
+
+function emptyInventory(): Inventory {
+  return RESOURCES.reduce(
+    (acc, r) => ((acc[r] = 0), acc),
+    {} as Inventory,
+  );
 }

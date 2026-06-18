@@ -317,3 +317,75 @@ td.name {
   opacity: 0.55;
   line-height: 1.4;
 }
+
+/* Quantity input + Trade button in the route planner */
+td.qty {
+  text-align: right;
+}
+td.qty input {
+  width: 3.2rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(8, 14, 19, 0.6);
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.qty input:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+/* Remove the native number-input spinner (increment/decrement) buttons. */
+td.qty input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+td.qty input::-webkit-outer-spin-button,
+td.qty input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+td.qty input:disabled {
+  opacity: 0.4;
+}
+
+.route-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+.route-status {
+  font-size: 0.78rem;
+  color: var(--teal);
+  opacity: 0.85;
+  margin-right: auto;
+}
+.route-status.blocked {
+  color: #e08a8a;
+}
+.trade-btn {
+  border-color: var(--teal);
+  color: #14222e;
+  background: var(--teal);
+  font-weight: 600;
+}
+.trade-btn:hover:not(:disabled) {
+  color: #14222e;
+  background: #9fe0cb;
+}
+.trade-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Autopilot voyage status banner */
+.toast.autopilot {
+  top: 3.2rem;
+  background: rgba(20, 34, 46, 0.92);
+  border: 1px solid var(--teal);
+  color: var(--teal);
+}

@@ -13,6 +13,10 @@
   <div class="toast">{{ error() }}</div>
 }
 
+@if (autopilotStatus(); as status) {
+  <div class="toast autopilot">⛵ {{ status }}</div>
+}
+
 @if (state(); as s) {
   <!-- Top-left: ship status -->
   <div class="hud hud-left">
@@ -53,8 +57,8 @@
     </div>
   </div>
 
-  <!-- Bottom-center: trade panel when docked -->
-  @if (nearbyPort(); as port) {
+  <!-- Bottom-center: trade panel when docked (hidden while the map is open) -->
+  @if (!showMap() && nearbyPort(); as port) {
     <div class="trade">
       <div class="trade-head">
         <span class="port-name">{{ port.name }}</span>
@@ -159,6 +163,7 @@
               <th>sell</th>
               <th>margin</th>
               <th>margin %</th>
+              <th>quantity</th>
             </tr>
           </thead>
           <tbody>
@@ -181,10 +186,40 @@
                 >
                   {{ routeMarginPctOf(r) | number: '1.0-0' }}%
                 </td>
+                <td class="qty">
+                  <input
+                    type="number"
+                    min="0"
+                    max="999"
+                    [value]="routeQuantities()[r]"
+                    [disabled]="autopilotActive()"
+                    (focus)="$any($event.target).select()"
+                    (input)="setRouteQuantity(r, +$any($event.target).value)"
+                  />
+                </td>
               </tr>
             }
           </tbody>
         </table>
+
+        <div class="route-actions">
+          @if (autopilotStatus(); as status) {
+            <span class="route-status">{{ status }}</span>
+          } @else if (routeTradeBlock(); as reason) {
+            <span class="route-status blocked">{{ reason }}</span>
+          }
+          <button
+            class="btn trade-btn"
+            [disabled]="
+              routeTotalQuantity() <= 0 ||
+              autopilotActive() ||
+              routeTradeBlock() !== null
+            "
+            (click)="startRouteTrade()"
+          >
+            {{ autopilotActive() ? 'Trading…' : 'Trade' }}
+          </button>
+        </div>
       } @else {
         <p class="route-hint">
           Click a port on the map to buy at, then another to sell at.
