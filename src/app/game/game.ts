@@ -34,6 +34,9 @@ export class Game implements AfterViewInit, OnDestroy {
     viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
 
   readonly resources = RESOURCES;
+  // The two legs of a route, used to render the planner. Leg 1 sails port 1 →
+  // port 2; leg 2 is the return trip port 2 → port 1.
+  readonly legNumbers = [1, 2] as const;
 
   // Authoritative economy state from the backend (gold, cargo, ports, world).
   readonly state = signal<GameState | null>(null);
@@ -44,48 +47,74 @@ export class Game implements AfterViewInit, OnDestroy {
   readonly nearbyPort = signal<Port | null>(null);
   // Live ship coordinates for the HUD (updated a few times per second).
   readonly shipPos = signal<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Quantity selected in the trade panel.
+  // Quantity selected in the trade panel, chosen from preset options.
   readonly tradeQuantity = signal(1);
+  readonly quantityOptions = [1, 5, 10, 50];
   // Whether the full-world map overlay is open.
   readonly showMap = signal(false);
 
-  // Route planner: two ports picked on the map — one to buy goods at and one
-  // to sell them at — so the player can compare arbitrage margins between ports.
-  readonly buyPortId = signal<string | null>(null);
-  readonly sellPortId = signal<string | null>(null);
-  readonly buyPort = computed(
-    () => this.state()?.ports.find((p) => p.id === this.buyPortId()) ?? null,
+  // Route planner: two ports picked on the map. The route is a round trip with
+  // two legs — port 1 → port 2 (leg 1) and port 2 → port 1 (leg 2) — each of
+  // which buys goods at its origin and sells them at its destination, so the
+  // player can profit in both directions.
+  readonly portAId = signal<string | null>(null);
+  readonly portBId = signal<string | null>(null);
+  readonly portA = computed(
+    () => this.state()?.ports.find((p) => p.id === this.portAId()) ?? null,
   );
-  readonly sellPort = computed(
-    () => this.state()?.ports.find((p) => p.id === this.sellPortId()) ?? null,
-  );
-
-  // Quantity of each good to trade along the planned route.
-  readonly routeQuantities = signal<Inventory>(emptyInventory());
-  readonly routeTotalQuantity = computed(() =>
-    RESOURCES.reduce((sum, r) => sum + this.routeQuantities()[r], 0),
+  readonly portB = computed(
+    () => this.state()?.ports.find((p) => p.id === this.portBId()) ?? null,
   );
 
-  // Total gold the planned purchase would cost at the buy port.
-  readonly routeCost = computed(() => {
-    const port = this.buyPort();
-    if (!port) return 0;
-    const q = this.routeQuantities();
-    return RESOURCES.reduce((sum, r) => sum + buyPrice(port.prices[r]) * q[r], 0);
+  // Quantity of each good to trade on each leg of the route.
+  readonly leg1Quantities = signal<Inventory>(emptyInventory());
+  readonly leg2Quantities = signal<Inventory>(emptyInventory());
+
+  // Whether the autopilot should keep looping the round trip until cancelled.
+  readonly routeRepeat = signal(false);
+
+  readonly routeTotalQuantity = computed(
+    () => this.legTotalQuantity(1) + this.legTotalQuantity(2),
+  );
+
+  // The ordered legs the autopilot will actually run — a leg is skipped when it
+  // has nothing to carry. Each leg buys at one port and sells at the other.
+  readonly routeLegs = computed<RouteLeg[]>(() => {
+    const a = this.portA();
+    const b = this.portB();
+    if (!a || !b) return [];
+    const legs: RouteLeg[] = [];
+    if (this.legTotalQuantity(1) > 0) {
+      legs.push({ buyPortId: a.id, sellPortId: b.id, quantities: { ...this.leg1Quantities() } });
+    }
+    if (this.legTotalQuantity(2) > 0) {
+      legs.push({ buyPortId: b.id, sellPortId: a.id, quantities: { ...this.leg2Quantities() } });
+    }
+    return legs;
   });
 
-  // Why the route trade can't start, or null when it's good to go. Used to both
-  // block the Trade button and report the reason to the player.
+  // Why the route trade can't start, or null when it's good to go. Validates the
+  // first leg that will run (its buy must fit current cargo space and gold);
+  // later legs are checked by the backend as the voyage unfolds.
   readonly routeTradeBlock = computed<string | null>(() => {
     const s = this.state();
-    if (!s || !this.buyPort() || this.routeTotalQuantity() <= 0) return null;
+    const first = this.routeLegs()[0];
+    if (!s || !first) return null;
+
+    const port = s.ports.find((p) => p.id === first.buyPortId);
+    if (!port) return null;
+    const total = RESOURCES.reduce((sum, r) => sum + first.quantities[r], 0);
 
     const freeSpace = s.ship.cargoCapacity - this.cargoUsed();
-    if (this.routeTotalQuantity() > freeSpace) {
-      return `Not enough cargo space — need ${this.routeTotalQuantity()}, ${freeSpace} free`;
+    if (total > freeSpace) {
+      return `Not enough cargo space — need ${total}, ${freeSpace} free`;
     }
-    if (this.routeCost() > s.ship.gold) {
-      return `Not enough gold — need ${this.routeCost()}, have ${s.ship.gold}`;
+    const cost = RESOURCES.reduce(
+      (sum, r) => sum + buyPrice(port.prices[r]) * first.quantities[r],
+      0,
+    );
+    if (cost > s.ship.gold) {
+      return `Not enough gold — need ${cost}, have ${s.ship.gold}`;
     }
     return null;
   });
@@ -110,12 +139,13 @@ export class Game implements AfterViewInit, OnDestroy {
   private readonly keys = new Set<string>();
 
   // Active route-trade voyage, or null when sailing manually. The state machine
-  // sails to the buy port, buys the planned goods, sails to the sell port, sells
-  // them, then clears itself. `busy` is true while a trade request is in flight.
+  // runs each leg in turn — sail to its buy port, buy the planned goods, sail to
+  // its sell port, sell them — then advances to the next leg, looping back to the
+  // first when `repeat` is set. `busy` is true while a trade request is in flight.
   private autopilot: {
-    buyPortId: string;
-    sellPortId: string;
-    quantities: Inventory;
+    legs: RouteLeg[];
+    index: number;
+    repeat: boolean;
     phase: 'toBuy' | 'buying' | 'toSell' | 'selling';
     busy: boolean;
   } | null = null;
@@ -368,51 +398,71 @@ export class Game implements AfterViewInit, OnDestroy {
 
   // ---- route planner -------------------------------------------------------
 
-  // Price to buy a good at the chosen "buy" port.
-  routeBuyPriceOf(r: Resource): number {
-    const port = this.buyPort();
-    return port ? buyPrice(port.prices[r]) : 0;
+  // Leg 1 sails port 1 → port 2 (buy at A, sell at B); leg 2 is the return
+  // trip port 2 → port 1 (buy at B, sell at A).
+  private legBuyPort(leg: 1 | 2): Port | null {
+    return leg === 1 ? this.portA() : this.portB();
+  }
+  private legSellPort(leg: 1 | 2): Port | null {
+    return leg === 1 ? this.portB() : this.portA();
+  }
+  private legQuantitiesSignal(leg: 1 | 2) {
+    return leg === 1 ? this.leg1Quantities : this.leg2Quantities;
   }
 
-  // Price to sell a good at the chosen "sell" port.
-  routeSellPriceOf(r: Resource): number {
-    const port = this.sellPort();
+  // Quantity of a good planned for a leg.
+  legQuantityOf(leg: 1 | 2, r: Resource): number {
+    return this.legQuantitiesSignal(leg)()[r];
+  }
+
+  // Total units carried on a leg, across all goods.
+  legTotalQuantity(leg: 1 | 2): number {
+    const q = this.legQuantitiesSignal(leg)();
+    return RESOURCES.reduce((sum, r) => sum + q[r], 0);
+  }
+
+  // Price to buy / sell a good on the given leg.
+  legBuyPriceOf(leg: 1 | 2, r: Resource): number {
+    const port = this.legBuyPort(leg);
+    return port ? buyPrice(port.prices[r]) : 0;
+  }
+  legSellPriceOf(leg: 1 | 2, r: Resource): number {
+    const port = this.legSellPort(leg);
     return port ? sellPrice(port.prices[r]) : 0;
   }
 
-  // Profit per unit of buying at one port and selling at the other.
-  routeMarginOf(r: Resource): number {
-    return this.routeSellPriceOf(r) - this.routeBuyPriceOf(r);
+  // Profit per unit of buying at the leg's origin and selling at its destination.
+  legMarginOf(leg: 1 | 2, r: Resource): number {
+    return this.legSellPriceOf(leg, r) - this.legBuyPriceOf(leg, r);
   }
 
-  // The route margin as a percentage of the buy price.
-  routeMarginPctOf(r: Resource): number {
-    const buy = this.routeBuyPriceOf(r);
+  // The leg margin as a percentage of the buy price.
+  legMarginPctOf(leg: 1 | 2, r: Resource): number {
+    const buy = this.legBuyPriceOf(leg, r);
     if (buy === 0) return 0;
-    return (this.routeMarginOf(r) / buy) * 100;
+    return (this.legMarginOf(leg, r) / buy) * 100;
   }
 
-  // Set how many units of a good to trade along the route (clamped to 0–999).
-  setRouteQuantity(r: Resource, value: number): void {
+  // Set how many units of a good to trade on a leg (clamped to 0–999).
+  setLegQuantity(leg: 1 | 2, r: Resource, value: number): void {
     const q = Math.max(0, Math.min(999, Math.round(value || 0)));
-    this.routeQuantities.update((m) => ({ ...m, [r]: q }));
+    this.legQuantitiesSignal(leg).update((m) => ({ ...m, [r]: q }));
   }
 
   clearRoute(): void {
-    this.buyPortId.set(null);
-    this.sellPortId.set(null);
-    this.routeQuantities.set(emptyInventory());
+    this.portAId.set(null);
+    this.portBId.set(null);
+    this.leg1Quantities.set(emptyInventory());
+    this.leg2Quantities.set(emptyInventory());
   }
 
   // ---- route autopilot -----------------------------------------------------
 
-  // Begin a voyage: sail to the buy port, buy the planned goods, sail to the
-  // sell port, sell them. Closes the map so the player can watch the trip.
+  // Begin a voyage: run each leg in turn (sail to its buy port, buy, sail to its
+  // sell port, sell), looping when "repeat" is set. Closes the map to watch.
   startRouteTrade(): void {
-    const buyId = this.buyPortId();
-    const sellId = this.sellPortId();
-    if (!buyId || !sellId) return;
-    if (this.routeTotalQuantity() <= 0) return;
+    const legs = this.routeLegs();
+    if (legs.length === 0) return;
     if (this.autopilot) return;
 
     // Cargo / gold are validated reactively via routeTradeBlock(), which also
@@ -420,19 +470,19 @@ export class Game implements AfterViewInit, OnDestroy {
     if (this.routeTradeBlock()) return;
 
     this.autopilot = {
-      buyPortId: buyId,
-      sellPortId: sellId,
-      quantities: { ...this.routeQuantities() },
+      legs,
+      index: 0,
+      repeat: this.routeRepeat(),
       phase: 'toBuy',
       busy: false,
     };
     this.keys.clear();
     this.showMap.set(false);
-    const name = this.buyPort()?.name ?? 'port';
+    const name = this.portName(legs[0].buyPortId);
     this.autopilotStatus.set(`Sailing to ${name} to buy…`);
   }
 
-  // Steer the ship toward the current target port; on arrival, run the trades.
+  // Steer the ship toward the current leg's target port; on arrival, run trades.
   private updateAutopilot(dt: number): void {
     const a = this.autopilot;
     const s = this.state();
@@ -441,7 +491,8 @@ export class Game implements AfterViewInit, OnDestroy {
     // While a trade request is in flight, coast (friction) and wait.
     if (a.busy) return;
 
-    const targetId = a.phase === 'toBuy' ? a.buyPortId : a.sellPortId;
+    const leg = a.legs[a.index];
+    const targetId = a.phase === 'toBuy' ? leg.buyPortId : leg.sellPortId;
     const port = s.ports.find((p) => p.id === targetId);
     if (!port) {
       this.cancelAutopilot('Port no longer exists');
@@ -459,16 +510,16 @@ export class Game implements AfterViewInit, OnDestroy {
       if (a.phase === 'toBuy') {
         a.phase = 'buying';
         this.autopilotStatus.set(`Buying at ${port.name}…`);
-        this.runTrades(port.id, 'buy', () => {
+        this.runTrades(port.id, 'buy', leg.quantities, () => {
           if (!this.autopilot) return;
           this.autopilot.phase = 'toSell';
-          const dest = this.state()?.ports.find((p) => p.id === a.sellPortId);
-          this.autopilotStatus.set(`Sailing to ${dest?.name ?? 'port'} to sell…`);
+          const dest = this.portName(leg.sellPortId);
+          this.autopilotStatus.set(`Sailing to ${dest} to sell…`);
         });
       } else {
         a.phase = 'selling';
         this.autopilotStatus.set(`Selling at ${port.name}…`);
-        this.runTrades(port.id, 'sell', () => this.finishAutopilot());
+        this.runTrades(port.id, 'sell', leg.quantities, () => this.advanceLeg());
       }
       return;
     }
@@ -478,18 +529,43 @@ export class Game implements AfterViewInit, OnDestroy {
     this.vy += (dy / dist) * this.ACCEL * dt;
   }
 
+  // Move on to the next leg, looping back to the first when repeating; otherwise
+  // the voyage is complete.
+  private advanceLeg(): void {
+    const a = this.autopilot;
+    if (!a) return;
+
+    const next = a.index + 1;
+    if (next < a.legs.length) {
+      a.index = next;
+    } else if (a.repeat) {
+      a.index = 0;
+    } else {
+      this.finishAutopilot();
+      return;
+    }
+    a.phase = 'toBuy';
+    const name = this.portName(a.legs[a.index].buyPortId);
+    this.autopilotStatus.set(`Sailing to ${name} to buy…`);
+  }
+
+  private portName(id: string): string {
+    return this.state()?.ports.find((p) => p.id === id)?.name ?? 'port';
+  }
+
   // Persist the ship's position, then trade each planned good in turn so the
   // backend's docking check agrees before the orders go through.
   private runTrades(
     portId: string,
     action: 'buy' | 'sell',
+    quantities: Inventory,
     done: () => void,
   ): void {
     if (!this.autopilot) return;
     this.autopilot.busy = true;
     this.lastSyncedPos = { x: this.shipX, y: this.shipY };
     this.api.move(this.shipX, this.shipY).subscribe({
-      next: () => this.tradeNext(portId, action, 0, done),
+      next: () => this.tradeNext(portId, action, quantities, 0, done),
       error: () => this.cancelAutopilot('Could not reach the port'),
     });
   }
@@ -497,6 +573,7 @@ export class Game implements AfterViewInit, OnDestroy {
   private tradeNext(
     portId: string,
     action: 'buy' | 'sell',
+    quantities: Inventory,
     index: number,
     done: () => void,
   ): void {
@@ -505,7 +582,7 @@ export class Game implements AfterViewInit, OnDestroy {
 
     // Skip goods with nothing to trade.
     let i = index;
-    while (i < RESOURCES.length && a.quantities[RESOURCES[i]] <= 0) i++;
+    while (i < RESOURCES.length && quantities[RESOURCES[i]] <= 0) i++;
     if (i >= RESOURCES.length) {
       a.busy = false;
       done();
@@ -513,10 +590,10 @@ export class Game implements AfterViewInit, OnDestroy {
     }
 
     const r = RESOURCES[i];
-    this.api.trade(portId, r, a.quantities[r], action).subscribe({
+    this.api.trade(portId, r, quantities[r], action).subscribe({
       next: (st) => {
         this.applyState(st);
-        this.tradeNext(portId, action, i + 1, done);
+        this.tradeNext(portId, action, quantities, i + 1, done);
       },
       error: (e) =>
         this.cancelAutopilot(e?.error?.message ?? `Could not ${action} ${r}`),
@@ -541,8 +618,8 @@ export class Game implements AfterViewInit, OnDestroy {
     setTimeout(() => this.error.set(null), 2500);
   }
 
-  // Click on the world map to pick ports: first pick is the buy port, second is
-  // the sell port. Clicking a selected port deselects it; a third pick restarts.
+  // Click on the world map to pick the two route ports in order. Clicking a
+  // selected port deselects it; a third pick restarts the selection.
   onMapClick(event: MouseEvent): void {
     if (!this.showMap()) return;
     const s = this.state();
@@ -562,18 +639,18 @@ export class Game implements AfterViewInit, OnDestroy {
     });
     if (!hit) return;
 
-    if (this.buyPortId() === hit.id) {
-      this.buyPortId.set(null);
-    } else if (this.sellPortId() === hit.id) {
-      this.sellPortId.set(null);
-    } else if (this.buyPortId() === null) {
-      this.buyPortId.set(hit.id);
-    } else if (this.sellPortId() === null) {
-      this.sellPortId.set(hit.id);
+    if (this.portAId() === hit.id) {
+      this.portAId.set(null);
+    } else if (this.portBId() === hit.id) {
+      this.portBId.set(null);
+    } else if (this.portAId() === null) {
+      this.portAId.set(hit.id);
+    } else if (this.portBId() === null) {
+      this.portBId.set(hit.id);
     } else {
       // Both already chosen — restart the selection from this port.
-      this.buyPortId.set(hit.id);
-      this.sellPortId.set(null);
+      this.portAId.set(hit.id);
+      this.portBId.set(null);
     }
   }
 
@@ -651,18 +728,18 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.fillStyle = 'rgba(223,231,234,0.5)';
     ctx.font = '12px system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('click ports: buy then sell · M to close', ox + size, oy - 12);
+    ctx.fillText('click two ports for a route · M to close', ox + size, oy - 12);
 
-    const buyId = this.buyPortId();
-    const sellId = this.sellPortId();
+    const aId = this.portAId();
+    const bId = this.portBId();
 
     // Trade-route line between the two chosen ports.
-    const buyP = this.buyPort();
-    const sellP = this.sellPort();
-    if (buyP && sellP) {
+    const aP = this.portA();
+    const bP = this.portB();
+    if (aP && bP) {
       ctx.beginPath();
-      ctx.moveTo(ox + buyP.x * scale, oy + buyP.y * scale);
-      ctx.lineTo(ox + sellP.x * scale, oy + sellP.y * scale);
+      ctx.moveTo(ox + aP.x * scale, oy + aP.y * scale);
+      ctx.lineTo(ox + bP.x * scale, oy + bP.y * scale);
       ctx.strokeStyle = 'rgba(127,209,185,0.5)';
       ctx.setLineDash([6, 5]);
       ctx.lineWidth = 1.5;
@@ -674,12 +751,12 @@ export class Game implements AfterViewInit, OnDestroy {
     for (const p of s.ports) {
       const px = ox + p.x * scale;
       const py = oy + p.y * scale;
-      const isBuy = p.id === buyId;
-      const isSell = p.id === sellId;
+      const isA = p.id === aId;
+      const isB = p.id === bId;
 
       // Highlight ring + role badge for a chosen port.
-      if (isBuy || isSell) {
-        const accent = isBuy ? '#e0c068' : '#7fd1b9';
+      if (isA || isB) {
+        const accent = isA ? '#e0c068' : '#7fd1b9';
         ctx.beginPath();
         ctx.arc(px, py, 9, 0, Math.PI * 2);
         ctx.strokeStyle = accent;
@@ -688,10 +765,10 @@ export class Game implements AfterViewInit, OnDestroy {
         ctx.fillStyle = accent;
         ctx.font = '700 9px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(isBuy ? 'BUY' : 'SELL', px, py + 18);
+        ctx.fillText(isA ? '1' : '2', px, py + 18);
       }
 
-      ctx.fillStyle = isSell ? '#7fd1b9' : '#e0c068';
+      ctx.fillStyle = isB ? '#7fd1b9' : '#e0c068';
       ctx.fillRect(px - 4, py - 4, 8, 8);
       ctx.fillStyle = '#dfe7ea';
       ctx.font = '11px system-ui, sans-serif';
@@ -806,6 +883,13 @@ export class Game implements AfterViewInit, OnDestroy {
 
     ctx.restore();
   }
+}
+
+// One leg of a planned route: buy these goods at one port, sell them at another.
+interface RouteLeg {
+  buyPortId: string;
+  sellPortId: string;
+  quantities: Inventory;
 }
 
 const MOVE_KEYS = new Set([

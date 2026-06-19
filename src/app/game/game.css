@@ -178,25 +178,35 @@
   color: var(--teal);
 }
 .quantity-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.8rem;
   opacity: 0.85;
 }
-.quantity-stepper button {
-  width: 24px;
-  height: 24px;
+.qty-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: transparent;
-  color: var(--ink);
   cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-}
-.quantity-stepper strong {
-  display: inline-block;
-  min-width: 1.5rem;
-  text-align: center;
   font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.qty-opt.active {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: rgba(127, 209, 185, 0.12);
+}
+/* The radio itself is hidden — the whole pill is the control. */
+.qty-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
 table {
@@ -305,10 +315,10 @@ td.name {
   font-size: 0.66rem;
   letter-spacing: 0.04em;
 }
-.route-port.buy {
+.route-port.a {
   color: var(--gold);
 }
-.route-port.sell {
+.route-port.b {
   color: var(--teal);
 }
 .route-hint {
@@ -316,6 +326,37 @@ td.name {
   font-size: 0.78rem;
   opacity: 0.55;
   line-height: 1.4;
+}
+
+/* Repeat toggle in the route header */
+.route-head .repeat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  margin-right: 0.6rem;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  cursor: pointer;
+  user-select: none;
+}
+.route-head .repeat input {
+  accent-color: var(--teal);
+  cursor: pointer;
+}
+
+/* Each round-trip leg (port 1 → port 2 and the return) */
+.leg + .leg {
+  margin-top: 0.7rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.leg-head {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  margin-bottom: 0.2rem;
 }
 
 /* Quantity input + Trade button in the route planner */

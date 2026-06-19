@@ -64,9 +64,18 @@
         <span class="port-name">{{ port.name }}</span>
         <span class="quantity-stepper">
           quantity
-          <button (click)="setQuantity(tradeQuantity() - 1)">−</button>
-          <strong>{{ tradeQuantity() }}</strong>
-          <button (click)="setQuantity(tradeQuantity() + 1)">+</button>
+          @for (q of quantityOptions; track q) {
+            <label class="qty-opt" [class.active]="tradeQuantity() === q">
+              <input
+                type="radio"
+                name="tradeQuantity"
+                [value]="q"
+                [checked]="tradeQuantity() === q"
+                (change)="setQuantity(q)"
+              />
+              {{ q }}
+            </label>
+          }
         </span>
       </div>
       <table>
@@ -75,6 +84,7 @@
             <th>good</th>
             <th>buy</th>
             <th>sell</th>
+            <th>avg cost</th>
             <th>margin</th>
             <th>margin %</th>
             <th>held</th>
@@ -87,6 +97,9 @@
               <td class="name">{{ r }}</td>
               <td class="price buy">{{ buyPriceOf(port, r) }}</td>
               <td class="price sell">{{ sellPriceOf(port, r) }}</td>
+              <td class="avg">
+                {{ avgCostOf(r) > 0 ? (avgCostOf(r) | number: '1.1-1') : '—' }}
+              </td>
               <td
                 class="margin"
                 [class.gain]="avgCostOf(r) > 0 && sellMarginOf(port, r) > 0"
@@ -136,71 +149,91 @@
     </div>
   }
 
-  <!-- Route planner: compare buy/sell prices between two map-picked ports -->
+  <!-- Route planner: a two-leg round trip between two map-picked ports -->
   @if (showMap()) {
     <div class="route">
       <div class="route-head">
         <span class="route-title">Trade route</span>
-        @if (buyPort() || sellPort()) {
+        <label class="repeat">
+          <input
+            type="checkbox"
+            [checked]="routeRepeat()"
+            [disabled]="autopilotActive()"
+            (change)="routeRepeat.set($any($event.target).checked)"
+          />
+          repeat
+        </label>
+        @if (portA() || portB()) {
           <button class="btn" (click)="clearRoute()">Clear</button>
         }
       </div>
       <div class="route-ports">
-        <span class="route-port buy">
-          <em>buy at</em> {{ buyPort()?.name ?? 'pick a port' }}
+        <span class="route-port a">
+          <em>port 1</em> {{ portA()?.name ?? 'pick a port' }}
         </span>
-        <span class="route-port sell">
-          <em>sell at</em> {{ sellPort()?.name ?? 'pick a port' }}
+        <span class="route-port b">
+          <em>port 2</em> {{ portB()?.name ?? 'pick a port' }}
         </span>
       </div>
 
-      @if (buyPort() && sellPort()) {
-        <table>
-          <thead>
-            <tr>
-              <th>good</th>
-              <th>buy</th>
-              <th>sell</th>
-              <th>margin</th>
-              <th>margin %</th>
-              <th>quantity</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (r of resources; track r) {
-              <tr>
-                <td class="name">{{ r }}</td>
-                <td class="price buy">{{ routeBuyPriceOf(r) }}</td>
-                <td class="price sell">{{ routeSellPriceOf(r) }}</td>
-                <td
-                  class="margin"
-                  [class.gain]="routeMarginOf(r) > 0"
-                  [class.loss]="routeMarginOf(r) < 0"
-                >
-                  {{ routeMarginOf(r) }}
-                </td>
-                <td
-                  class="margin"
-                  [class.gain]="routeMarginOf(r) > 0"
-                  [class.loss]="routeMarginOf(r) < 0"
-                >
-                  {{ routeMarginPctOf(r) | number: '1.0-0' }}%
-                </td>
-                <td class="qty">
-                  <input
-                    type="number"
-                    min="0"
-                    max="999"
-                    [value]="routeQuantities()[r]"
-                    [disabled]="autopilotActive()"
-                    (focus)="$any($event.target).select()"
-                    (input)="setRouteQuantity(r, +$any($event.target).value)"
-                  />
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+      @if (portA() && portB()) {
+        @for (leg of legNumbers; track leg) {
+          <div class="leg">
+            <div class="leg-head">
+              <span class="leg-dir">
+                {{ leg === 1 ? portA()?.name : portB()?.name }}
+                →
+                {{ leg === 1 ? portB()?.name : portA()?.name }}
+              </span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>good</th>
+                  <th>buy</th>
+                  <th>sell</th>
+                  <th>margin</th>
+                  <th>margin %</th>
+                  <th>quantity</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of resources; track r) {
+                  <tr>
+                    <td class="name">{{ r }}</td>
+                    <td class="price buy">{{ legBuyPriceOf(leg, r) }}</td>
+                    <td class="price sell">{{ legSellPriceOf(leg, r) }}</td>
+                    <td
+                      class="margin"
+                      [class.gain]="legMarginOf(leg, r) > 0"
+                      [class.loss]="legMarginOf(leg, r) < 0"
+                    >
+                      {{ legMarginOf(leg, r) }}
+                    </td>
+                    <td
+                      class="margin"
+                      [class.gain]="legMarginOf(leg, r) > 0"
+                      [class.loss]="legMarginOf(leg, r) < 0"
+                    >
+                      {{ legMarginPctOf(leg, r) | number: '1.0-0' }}%
+                    </td>
+                    <td class="qty">
+                      <input
+                        type="number"
+                        min="0"
+                        max="999"
+                        [value]="legQuantityOf(leg, r)"
+                        [disabled]="autopilotActive()"
+                        (focus)="$any($event.target).select()"
+                        (input)="setLegQuantity(leg, r, +$any($event.target).value)"
+                      />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
 
         <div class="route-actions">
           @if (autopilotStatus(); as status) {
@@ -222,7 +255,7 @@
         </div>
       } @else {
         <p class="route-hint">
-          Click a port on the map to buy at, then another to sell at.
+          Click two ports on the map to plan a round trip between them.
         </p>
       }
     </div>
