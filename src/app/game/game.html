@@ -21,6 +21,9 @@
   <!-- Top-left: ship status -->
   <div class="hud hud-left">
     <div class="row gold">⚓ {{ s.ship.gold }} gold</div>
+    @if (currentBoat(); as boat) {
+      <div class="row boat">⛵ {{ boat.name }}</div>
+    }
     <div class="row cargo-line">
       <span>Cargo {{ cargoUsed() }} / {{ s.ship.cargoCapacity }}</span>
       <span class="spent">Spent {{ s.purchases.totalSpent | number: '1.0-0' }}</span>
@@ -146,6 +149,38 @@
           }
         </tbody>
       </table>
+
+      <!-- Shipyard: ports with one offer larger hulls. Better ports stock
+           better boats; the old hull trades in toward the upgrade. -->
+      @if (boatsAt(port); as boats) {
+        @if (boats.length > 0) {
+          <div class="shipyard">
+            <div class="shipyard-head">
+              <span class="shipyard-title">⛵ Shipyard</span>
+              <span class="shipyard-sub">
+                trade in {{ currentBoat()?.name }} ·
+                {{ s.ship.cargoCapacity }} cargo
+              </span>
+            </div>
+            <ul class="boats">
+              @for (boat of boats; track boat.id) {
+                <li>
+                  <span class="boat-name">{{ boat.name }}</span>
+                  <span class="boat-cap">{{ boat.cargoCapacity }} cargo</span>
+                  <span class="boat-cost">{{ upgradeCostOf(boat) }} gold</span>
+                  <button
+                    class="b-buy"
+                    [disabled]="!canBuyBoat(boat)"
+                    (click)="buyBoat(boat)"
+                  >
+                    buy
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      }
     </div>
   }
 

@@ -32,6 +32,10 @@ export class GameService {
     });
   }
 
+  buyShip(portId: string, boatId: string): Observable<GameState> {
+    return this.http.post<GameState>(`${API}/buy-ship`, { portId, boatId });
+  }
+
   reset(): Observable<GameState> {
     return this.http.post<GameState>(`${API}/reset`, {});
   }

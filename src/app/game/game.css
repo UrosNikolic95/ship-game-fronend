@@ -78,6 +78,10 @@
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
 }
+.row.boat {
+  color: var(--teal);
+  font-size: 0.82rem;
+}
 
 .cargo-line {
   display: flex;
@@ -271,6 +275,65 @@ td.name {
   background: var(--teal);
 }
 .actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Shipyard panel inside the trade dock — sells larger hulls */
+.shipyard {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.shipyard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+.shipyard-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--teal);
+}
+.shipyard-sub {
+  font-size: 0.72rem;
+  opacity: 0.55;
+}
+.boats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.boats li {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.22rem 0;
+  font-size: 0.85rem;
+}
+.boats .boat-name {
+  font-weight: 600;
+}
+.boats .boat-cap {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.boats .boat-cost {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.boats .b-buy {
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #14222e;
+  background: var(--gold);
+}
+.boats .b-buy:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }

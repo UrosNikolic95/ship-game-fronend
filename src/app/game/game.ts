@@ -18,6 +18,9 @@ import {
   Resource,
   RESOURCES,
   DOCK_RADIUS,
+  Boat,
+  BOATS,
+  findBoat,
   buyPrice,
   sellPrice,
 } from './models';
@@ -129,6 +132,12 @@ export class Game implements AfterViewInit, OnDestroy {
     if (!s) return 0;
     return RESOURCES.reduce((sum, r) => sum + s.ship.cargo[r], 0);
   });
+
+  // The hull the player is currently sailing, used to label the HUD and to
+  // price shipyard upgrades (the old hull trades in at full value).
+  readonly currentBoat = computed<Boat | null>(
+    () => findBoat(this.state()?.ship.boatId ?? '') ?? null,
+  );
 
   // ---- movement (kept in plain fields so the render loop never triggers CD)
   private shipX = 0;
@@ -394,6 +403,43 @@ export class Game implements AfterViewInit, OnDestroy {
     const avg = this.avgCostOf(r);
     if (avg === 0) return 0;
     return (this.sellMarginOf(port, r) / avg) * 100;
+  }
+
+  // ---- shipyard ------------------------------------------------------------
+
+  // Hulls a port's shipyard sells, largest last. Only upgrades (capacity above
+  // the current hull) are worth showing, so smaller hulls are filtered out.
+  boatsAt(port: Port): Boat[] {
+    const have = this.state()?.ship.cargoCapacity ?? 0;
+    return port.boatIds
+      .map((id) => findBoat(id))
+      .filter((b): b is Boat => !!b && b.cargoCapacity > have)
+      .sort((a, b) => a.cargoCapacity - b.cargoCapacity);
+  }
+
+  // Gold to upgrade to a hull: its price minus the current hull's trade-in.
+  upgradeCostOf(boat: Boat): number {
+    return boat.price - (this.currentBoat()?.price ?? 0);
+  }
+
+  // Whether the player can afford to upgrade to the given hull right now.
+  canBuyBoat(boat: Boat): boolean {
+    const gold = this.state()?.ship.gold ?? 0;
+    return this.upgradeCostOf(boat) <= gold;
+  }
+
+  // Purchase a larger hull from the docked port's shipyard.
+  buyBoat(boat: Boat): void {
+    const port = this.nearbyPort();
+    if (!port) return;
+    this.error.set(null);
+    this.api.buyShip(port.id, boat.id).subscribe({
+      next: (s) => this.applyState(s),
+      error: (e) => {
+        this.error.set(e?.error?.message ?? 'Could not buy ship');
+        setTimeout(() => this.error.set(null), 2500);
+      },
+    });
   }
 
   // ---- route planner -------------------------------------------------------
