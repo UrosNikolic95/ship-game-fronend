@@ -1,59 +1,73 @@
-# Practice6Frontend
+# Ship Game — Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.12.
+The web client for a 2D sailing & trading game. You captain a ship across an
+unbounded, procedurally generated sea, dock at ports, buy goods where they're
+cheap and sell them where they're dear, and upgrade to larger hulls as your
+fortune grows. The game world and economy are owned by the
+[NestJS backend](../backend); this app renders them on a canvas and drives the
+ship.
+
+Built with [Angular](https://angular.dev/) 21 and TypeScript. Rendering is done
+on an HTML5 `<canvas>`.
+
+## How to play
+
+- **Sail** with `WASD` or the arrow keys. The world scrolls beneath you and new
+  ports appear as you explore.
+- **Dock** by sailing within range of a port; a trade panel opens, letting you
+  buy and sell goods or upgrade your ship at ports with a shipyard.
+- **Map** — press `M` to toggle the full-world overlay.
+- **Route planner** — pick two ports on the map to plan a round trip, set how
+  much of each good to trade on each leg, and let the autopilot run the loop
+  (optionally repeating) while you watch the profit roll in.
+
+Goods are `wood`, `grain`, `iron`, `spice`, and `cloth`. You buy at a markup and
+sell at a markdown, so profit comes from the price spread between ports. The
+client mirrors the backend's pricing constants so it can preview what a trade
+will cost before sending it.
+
+> Run the [backend](../backend) first — the client talks to it at
+> `http://localhost:3000/game`.
+
+## Project layout
+
+```
+src/
+  main.ts                bootstrap
+  app/
+    app.routes.ts        single route -> Game component
+    app.config.ts        app providers (HttpClient, router)
+    game/
+      game.ts            the game component: rendering, input, autopilot
+      game.html / .css   HUD, trade panel, map overlay, route planner
+      game.service.ts    HTTP calls to the backend /game API
+      models.ts          domain types & pricing constants (mirror the backend)
+```
+
+## Setup
+
+```bash
+npm install
+```
 
 ## Development server
 
-To start a local development server, run:
-
 ```bash
-ng serve
+npm start        # or: ng serve
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Open `http://localhost:4200/`. The app reloads on source changes.
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Build
 
 ```bash
-ng generate component component-name
+npm run build    # or: ng build
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Build artifacts are written to `dist/`.
+
+## Tests
 
 ```bash
-ng generate --help
+npm test         # unit tests via Vitest
 ```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
