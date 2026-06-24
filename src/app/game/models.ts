@@ -50,8 +50,20 @@ export interface PurchaseStats {
   perResource: Record<Resource, { spent: number; quantity: number }>;
 }
 
+// One generated square of the infinite world. Chunk (cx, cy) covers
+// [cx*chunkSize, (cx+1)*chunkSize) x [cy*chunkSize, (cy+1)*chunkSize).
+export interface ChunkCoord {
+  cx: number;
+  cy: number;
+}
+
 export interface GameState {
-  world: { width: number; height: number };
+  // World units per chunk; the world is an unbounded grid of these squares.
+  chunkSize: number;
+  // World seed; chunk content is generated deterministically from it.
+  seed: number;
+  // Chunks generated so far. Chunk (0,0) is the hand-made starting area.
+  chunks: ChunkCoord[];
   ship: Ship;
   ports: Port[];
   purchases: PurchaseStats;

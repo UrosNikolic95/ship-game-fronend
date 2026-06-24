@@ -289,8 +289,10 @@ export class Game implements AfterViewInit, OnDestroy {
       this.vy = (this.vy / speed) * this.MAX_SPEED;
     }
 
-    this.shipX = clamp(this.shipX + this.vx * dt, 0, s.world.width);
-    this.shipY = clamp(this.shipY + this.vy * dt, 0, s.world.height);
+    // The world is unbounded — no clamp. New chunks are generated server-side
+    // as the ship sails into them (see pushPosition).
+    this.shipX += this.vx * dt;
+    this.shipY += this.vy * dt;
 
     if (speed > 0.1) this.heading = Math.atan2(this.vy, this.vx);
   }
@@ -332,7 +334,13 @@ export class Game implements AfterViewInit, OnDestroy {
 
   private pushPosition(): void {
     this.lastSyncedPos = { x: this.shipX, y: this.shipY };
-    this.api.move(this.shipX, this.shipY).subscribe({ error: () => {} });
+    // The server generates the chunk the ship entered and returns the updated
+    // state; apply it so newly generated ports appear. applyState leaves the
+    // client-authoritative shipX/shipY untouched, so this doesn't rubber-band.
+    this.api.move(this.shipX, this.shipY).subscribe({
+      next: (s) => this.applyState(s),
+      error: () => {},
+    });
   }
 
   // ---- trading -------------------------------------------------------------
@@ -675,7 +683,7 @@ export class Game implements AfterViewInit, OnDestroy {
     const { ox, oy, scale } = this.mapTransform(
       canvas.width,
       canvas.height,
-      s.world.width,
+      this.worldBounds(s),
     );
 
     const hit = s.ports.find((p) => {
@@ -729,20 +737,59 @@ export class Game implements AfterViewInit, OnDestroy {
     if (this.showMap()) this.drawMap(ctx, s, W, H);
   }
 
+  // The world is unbounded, so the "world map" shows the bounding box of every
+  // chunk generated so far. It grows as the ship explores into new chunks.
+  private worldBounds(s: GameState): {
+    minX: number;
+    minY: number;
+    width: number;
+    height: number;
+  } {
+    const cs = s.chunkSize;
+    // Seed with (0,0) so the starting chunk is always included.
+    let minCx = 0;
+    let minCy = 0;
+    let maxCx = 0;
+    let maxCy = 0;
+    for (const c of s.chunks) {
+      minCx = Math.min(minCx, c.cx);
+      minCy = Math.min(minCy, c.cy);
+      maxCx = Math.max(maxCx, c.cx);
+      maxCy = Math.max(maxCy, c.cy);
+    }
+    return {
+      minX: minCx * cs,
+      minY: minCy * cs,
+      width: (maxCx - minCx + 1) * cs,
+      height: (maxCy - minCy + 1) * cs,
+    };
+  }
+
   // Geometry of the square world-map panel within the viewport. Shared by the
   // renderer and the click hit-test so they always agree on port positions.
+  // `ox`/`oy` map world coordinates (p.x, p.y) -> screen via ox + p.x * scale;
+  // `panelX`/`panelY` are the panel's own top-left for drawing its chrome.
   private mapTransform(
     W: number,
     H: number,
-    worldWidth: number,
-  ): { size: number; ox: number; oy: number; scale: number } {
+    b: { minX: number; minY: number; width: number; height: number },
+  ): {
+    size: number;
+    panelX: number;
+    panelY: number;
+    ox: number;
+    oy: number;
+    scale: number;
+  } {
     const size = Math.min(W, H) * 0.8;
-    return {
-      size,
-      ox: (W - size) / 2,
-      oy: (H - size) / 2,
-      scale: size / worldWidth,
-    };
+    const panelX = (W - size) / 2;
+    const panelY = (H - size) / 2;
+    // Uniform scale so the (possibly non-square) world fits inside the panel.
+    const scale = size / Math.max(b.width, b.height);
+    // Center the world within the square panel and fold in the min-corner.
+    const ox = panelX + (size - b.width * scale) / 2 - b.minX * scale;
+    const oy = panelY + (size - b.height * scale) / 2 - b.minY * scale;
+    return { size, panelX, panelY, ox, oy, scale };
   }
 
   // Full-world overview: the entire map scaled to fit the screen.
@@ -756,25 +803,55 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.fillStyle = 'rgba(8, 14, 19, 0.78)';
     ctx.fillRect(0, 0, W, H);
 
-    // Square panel that fits the (square) world into the viewport.
-    const { size, ox, oy, scale } = this.mapTransform(W, H, s.world.width);
+    // Square panel that fits the explored world into the viewport.
+    const b = this.worldBounds(s);
+    const { size, panelX, panelY, ox, oy, scale } = this.mapTransform(W, H, b);
 
-    // Panel background + border.
-    ctx.fillStyle = '#14222e';
-    ctx.fillRect(ox, oy, size, size);
+    // Backdrop fills the letterbox margins around a non-square explored region.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(panelX, panelY, size, size);
+
+    // Chunk grid: each generated chunk is a sea-coloured square; chunks not yet
+    // generated are left black. Cells are square (uniform scale), never stretched.
+    const cs = s.chunkSize;
+    const cell = cs * scale;
+    const minCx = Math.round(b.minX / cs);
+    const minCy = Math.round(b.minY / cs);
+    const nx = Math.round(b.width / cs);
+    const ny = Math.round(b.height / cs);
+    const have = new Set(s.chunks.map((c) => `${c.cx},${c.cy}`));
+    ctx.lineWidth = 1;
+    for (let gy = 0; gy < ny; gy++) {
+      for (let gx = 0; gx < nx; gx++) {
+        const cx = minCx + gx;
+        const cy = minCy + gy;
+        const x = ox + cx * cs * scale;
+        const y = oy + cy * cs * scale;
+        ctx.fillStyle = have.has(`${cx},${cy}`) ? '#14222e' : '#000';
+        ctx.fillRect(x, y, cell, cell);
+        ctx.strokeStyle = 'rgba(127,209,185,0.5)';
+        ctx.strokeRect(x, y, cell, cell);
+      }
+    }
+
+    // Outer frame.
     ctx.strokeStyle = 'rgba(127,209,185,0.5)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(ox, oy, size, size);
+    ctx.strokeRect(panelX, panelY, size, size);
 
     // Title.
     ctx.fillStyle = '#7fd1b9';
     ctx.font = '600 16px system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('World Map', ox, oy - 12);
+    ctx.fillText('World Map', panelX, panelY - 12);
     ctx.fillStyle = 'rgba(223,231,234,0.5)';
     ctx.font = '12px system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('click two ports for a route · M to close', ox + size, oy - 12);
+    ctx.fillText(
+      'click two ports for a route · M to close',
+      panelX + size,
+      panelY - 12,
+    );
 
     const aId = this.portAId();
     const bId = this.portBId();
@@ -868,9 +945,11 @@ export class Game implements AfterViewInit, OnDestroy {
     camY: number,
     s: GameState,
   ): void {
+    // The world has no hard edge; outline the bounding box of explored chunks.
+    const b = this.worldBounds(s);
     ctx.strokeStyle = 'rgba(127,209,185,0.25)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(-camX, -camY, s.world.width, s.world.height);
+    ctx.strokeRect(b.minX - camX, b.minY - camY, b.width, b.height);
   }
 
   private drawPort(
@@ -948,10 +1027,6 @@ const MOVE_KEYS = new Set([
   's',
   'd',
 ]);
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
 
 function emptyInventory(): Inventory {
   return RESOURCES.reduce(
