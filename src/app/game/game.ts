@@ -260,6 +260,8 @@ export class Game implements AfterViewInit, OnDestroy {
     this.updateHud(dt, now);
     this.syncPosition(now);
     this.streamPresence(now);
+    // Advance other ships' smoothed positions before drawing them.
+    this.presence.interpolate(now);
     this.render();
 
     this.rafId = requestAnimationFrame((t) => this.loop(t));
@@ -1017,9 +1019,10 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.fillText(p.name, x, y - 34);
   }
 
-  // Draw every other player's ship, smoothing each toward its latest reported
-  // position so movement between presence updates looks continuous. Other ships
-  // are drawn in a distinct colour with a name tag so they read as "not you".
+  // Draw every other player's ship at its smoothed position (computed by
+  // PresenceService.interpolate each frame) so movement between presence updates
+  // looks continuous. Other ships are drawn in a distinct colour with a name tag
+  // so they read as "not you".
   private drawOtherShips(
     ctx: CanvasRenderingContext2D,
     camX: number,
@@ -1031,11 +1034,6 @@ export class Game implements AfterViewInit, OnDestroy {
     if (others.size === 0) return;
 
     for (const o of others.values()) {
-      // Ease the rendered position/heading toward the last value from the server.
-      o.rx += (o.x - o.rx) * 0.18;
-      o.ry += (o.y - o.ry) * 0.18;
-      o.rHeading = this.lerpAngle(o.rHeading, o.heading, 0.18);
-
       const x = o.rx - camX;
       const y = o.ry - camY;
       // Skip ships well outside the viewport.
@@ -1063,14 +1061,6 @@ export class Game implements AfterViewInit, OnDestroy {
       ctx.textAlign = 'center';
       ctx.fillText(o.name, x, y - 16);
     }
-  }
-
-  // Interpolate between two angles along the shortest arc (handles wraparound).
-  private lerpAngle(a: number, b: number, t: number): number {
-    let d = b - a;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    return a + d * t;
   }
 
   private drawShip(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
