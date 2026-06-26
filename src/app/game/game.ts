@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { GameService } from './game.service';
+import { PresenceService } from './presence.service';
 import {
   GameState,
   Inventory,
@@ -33,6 +34,7 @@ import {
 })
 export class Game implements AfterViewInit, OnDestroy {
   private readonly api = inject(GameService);
+  private readonly presence = inject(PresenceService);
   private readonly canvasRef =
     viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
 
@@ -165,6 +167,8 @@ export class Game implements AfterViewInit, OnDestroy {
   private lastSync = 0;
   private lastSyncedPos = { x: 0, y: 0 };
   private hudAccum = 0;
+  // Throttle for streaming our position to other players over the socket.
+  private lastPresence = 0;
 
   // Tuning for the arcade-style sailing feel.
   private readonly ACCEL = 0.45;
@@ -176,11 +180,14 @@ export class Game implements AfterViewInit, OnDestroy {
     this.ctx = canvas.getContext('2d')!;
     this.resizeCanvas();
     this.loadState();
+    // Join the real-time presence channel so we see other players sailing.
+    this.presence.connect();
     this.rafId = requestAnimationFrame((t) => this.loop(t));
   }
 
   ngOnDestroy(): void {
     cancelAnimationFrame(this.rafId);
+    this.presence.disconnect();
   }
 
   private loadState(): void {
@@ -252,6 +259,7 @@ export class Game implements AfterViewInit, OnDestroy {
     this.updateDocking();
     this.updateHud(dt, now);
     this.syncPosition(now);
+    this.streamPresence(now);
     this.render();
 
     this.rafId = requestAnimationFrame((t) => this.loop(t));
@@ -330,6 +338,18 @@ export class Game implements AfterViewInit, OnDestroy {
       Math.abs(this.shipX - this.lastSyncedPos.x) > 1 ||
       Math.abs(this.shipY - this.lastSyncedPos.y) > 1;
     if (moved) this.pushPosition();
+  }
+
+  // Stream our live position to other players a few times a second. This is
+  // pure presence — far more frequent than the throttled HTTP persistence in
+  // syncPosition — so other clients see us glide smoothly. Hold off until the
+  // initial state has loaded so we don't broadcast the (0,0) origin.
+  private streamPresence(now: number): void {
+    if (this.loading()) return;
+    if (now - this.lastPresence < 120) return;
+    this.lastPresence = now;
+    const boatId = this.state()?.ship.boatId ?? 'sloop';
+    this.presence.move(this.shipX, this.shipY, this.heading, boatId);
   }
 
   private pushPosition(): void {
@@ -732,6 +752,7 @@ export class Game implements AfterViewInit, OnDestroy {
       this.drawPort(ctx, p, camX, camY, p.id === this.nearbyPort()?.id);
     }
 
+    this.drawOtherShips(ctx, camX, camY, W, H);
     this.drawShip(ctx, W / 2, H / 2);
 
     if (this.showMap()) this.drawMap(ctx, s, W, H);
@@ -899,6 +920,14 @@ export class Game implements AfterViewInit, OnDestroy {
       ctx.fillText(p.name, px, py - 8);
     }
 
+    // Other players' ships as small dots, so the map shows where everyone is.
+    for (const o of this.presence.getOthers().values()) {
+      ctx.beginPath();
+      ctx.arc(ox + o.rx * scale, oy + o.ry * scale, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#e0894f';
+      ctx.fill();
+    }
+
     // Ship marker.
     const sx = ox + this.shipX * scale;
     const sy = oy + this.shipY * scale;
@@ -986,6 +1015,62 @@ export class Game implements AfterViewInit, OnDestroy {
     ctx.font = '13px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(p.name, x, y - 34);
+  }
+
+  // Draw every other player's ship, smoothing each toward its latest reported
+  // position so movement between presence updates looks continuous. Other ships
+  // are drawn in a distinct colour with a name tag so they read as "not you".
+  private drawOtherShips(
+    ctx: CanvasRenderingContext2D,
+    camX: number,
+    camY: number,
+    W: number,
+    H: number,
+  ): void {
+    const others = this.presence.getOthers();
+    if (others.size === 0) return;
+
+    for (const o of others.values()) {
+      // Ease the rendered position/heading toward the last value from the server.
+      o.rx += (o.x - o.rx) * 0.18;
+      o.ry += (o.y - o.ry) * 0.18;
+      o.rHeading = this.lerpAngle(o.rHeading, o.heading, 0.18);
+
+      const x = o.rx - camX;
+      const y = o.ry - camY;
+      // Skip ships well outside the viewport.
+      if (x < -60 || y < -60 || x > W + 60 || y > H + 60) continue;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(o.rHeading);
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(-10, -8);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-10, 8);
+      ctx.closePath();
+      ctx.fillStyle = '#e0894f';
+      ctx.fill();
+      ctx.strokeStyle = '#7a4a26';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // Name tag above the hull, unrotated.
+      ctx.fillStyle = 'rgba(224,137,79,0.9)';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(o.name, x, y - 16);
+    }
+  }
+
+  // Interpolate between two angles along the shortest arc (handles wraparound).
+  private lerpAngle(a: number, b: number, t: number): number {
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return a + d * t;
   }
 
   private drawShip(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
