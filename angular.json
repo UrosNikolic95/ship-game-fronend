@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "practice-6-frontend": {
+    "ship-game-frontend": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -60,10 +60,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "practice-6-frontend:build:production"
+              "buildTarget": "ship-game-frontend:build:production"
             },
             "development": {
-              "buildTarget": "practice-6-frontend:build:development"
+              "buildTarget": "ship-game-frontend:build:development"
             }
           },
           "defaultConfiguration": "development"
