@@ -25,6 +25,7 @@ import {
   buyPrice,
   sellPrice,
 } from './models';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-game',
@@ -201,7 +202,7 @@ export class Game implements AfterViewInit, OnDestroy {
         this.loading.set(false);
       },
       error: (e) => {
-        this.error.set('Cannot reach game server on http://localhost:3000');
+        this.error.set(`Cannot reach game server on ${environment.apiUrl}`);
         this.loading.set(false);
         console.error(e);
       },

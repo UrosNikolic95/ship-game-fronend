@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { io, Socket } from 'socket.io-client';
+import { environment } from '../../environments/environment';
 
 // A live position for another player's ship. `x`/`y`/`heading` are the latest
 // values pushed from the server; `rx`/`ry`/`rHeading` are the smoothed values
@@ -34,7 +35,7 @@ interface Sample {
   heading: number;
 }
 
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = environment.socketUrl;
 
 // How far behind real time to render other ships. Presence updates arrive about
 // every 120ms, so staying ~150ms in the past means we almost always have a
@@ -60,8 +61,13 @@ export class PresenceService {
   connect(): void {
     if (this.socket) return;
     // withCredentials sends the session cookie in the handshake, so the server
-    // ties this socket to the same user as the REST API.
-    this.socket = io(SOCKET_URL, { withCredentials: true });
+    // ties this socket to the same user as the REST API. `path` must match the
+    // gateway's `/api/socket.io` so the connection rides the same `/api` route
+    // nginx proxies to the backend in production (see game.gateway.ts).
+    this.socket = io(SOCKET_URL, {
+      path: '/api/socket.io',
+      withCredentials: true,
+    });
 
     this.socket.on('presence:snapshot', (ships: OtherShip[]) => {
       this.others.clear();
