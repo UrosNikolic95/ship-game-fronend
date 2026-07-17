@@ -50,6 +50,25 @@ export interface PurchaseStats {
   perResource: Record<Resource, { spent: number; quantity: number }>;
 }
 
+// One row of the leaderboard: a player's rank, display name, and peak gold
+// (the most gold they've ever held at once). Mirrors the backend shape — no raw
+// user id is sent; `isCurrentUser` lets us highlight our own row instead.
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  gold: number;
+  achievedAt: string | null;
+  isCurrentUser: boolean;
+}
+
+// The leaderboard as returned for one player: the top entries, plus that
+// player's own standing when they didn't make the top list (null when they're
+// already in `top` — flagged there via isCurrentUser — or aren't ranked yet).
+export interface Leaderboard {
+  top: LeaderboardEntry[];
+  currentUser: LeaderboardEntry | null;
+}
+
 // One generated square of the infinite world. Chunk (cx, cy) covers
 // [cx*chunkSize, (cx+1)*chunkSize) x [cy*chunkSize, (cy+1)*chunkSize).
 export interface ChunkCoord {

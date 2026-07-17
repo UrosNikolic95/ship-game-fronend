@@ -53,10 +53,18 @@
       <button class="btn" [class.active]="showMap()" (click)="toggleMap()">
         {{ showMap() ? 'Close map' : 'Map' }}
       </button>
+      <button
+        class="btn"
+        [class.active]="showLeaderboard()"
+        (click)="toggleLeaderboard()"
+      >
+        Ranks
+      </button>
       <button class="btn" (click)="resetGame()">New game</button>
     </div>
     <div class="hint">
-      WASD / arrows to sail<br />dock at a port to trade<br />M for full map
+      WASD / arrows to sail<br />dock at a port to trade<br />M for full map · L
+      for ranks
     </div>
   </div>
 
@@ -295,4 +303,63 @@
       }
     </div>
   }
+}
+
+<!-- Leaderboard: the richest players ever, by peak gold held. Opened with the
+     Ranks button or the L key; independent of whether game state has loaded. -->
+@if (showLeaderboard()) {
+  <div class="lb-backdrop" (click)="toggleLeaderboard()"></div>
+  <div class="leaderboard" role="dialog" aria-label="Leaderboard">
+    <div class="lb-head">
+      <span class="lb-title">🏆 Richest Captains</span>
+      <button class="lb-close" (click)="toggleLeaderboard()">✕</button>
+    </div>
+    <p class="lb-sub">Most gold ever held at once</p>
+
+    @if (leaderboardLoading()) {
+      <p class="lb-msg">Loading rankings…</p>
+    } @else if (leaderboardError()) {
+      <p class="lb-msg">Couldn't load the leaderboard.</p>
+    } @else if (leaderboard(); as board) {
+      @if (board.top.length === 0) {
+        <p class="lb-msg">No captains ranked yet — be the first!</p>
+      } @else {
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th class="lb-rank">#</th>
+              <th class="lb-name">captain</th>
+              <th class="lb-gold">peak gold</th>
+              <th class="lb-when">reached</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of board.top; track e.rank) {
+              <tr [class.me]="e.isCurrentUser">
+                <td class="lb-rank">{{ e.rank }}</td>
+                <td class="lb-name">
+                  {{ e.name }}@if (e.isCurrentUser) {<span class="lb-you">you</span>}
+                </td>
+                <td class="lb-gold">{{ e.gold | number: '1.0-0' }}</td>
+                <td class="lb-when">{{ achievedLabel(e.achievedAt) }}</td>
+              </tr>
+            }
+            @if (board.currentUser; as me) {
+              <tr class="lb-gap">
+                <td colspan="4">⋯</td>
+              </tr>
+              <tr class="me">
+                <td class="lb-rank">{{ me.rank }}</td>
+                <td class="lb-name">
+                  {{ me.name }}<span class="lb-you">you</span>
+                </td>
+                <td class="lb-gold">{{ me.gold | number: '1.0-0' }}</td>
+                <td class="lb-when">{{ achievedLabel(me.achievedAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    }
+  </div>
 }

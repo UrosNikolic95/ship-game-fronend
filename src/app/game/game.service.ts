@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { GameState, Resource } from './models';
+import { GameState, Leaderboard, Resource } from './models';
 import { environment } from '../../environments/environment';
 
 const API = `${environment.apiUrl}/game`;
@@ -12,6 +12,12 @@ export class GameService {
 
   getState(): Observable<GameState> {
     return this.http.get<GameState>(`${API}/state`);
+  }
+
+  // The richest players ever (by peak gold), plus our own standing when we're
+  // off the top list. Fetched on demand when the leaderboard panel is opened.
+  getLeaderboard(): Observable<Leaderboard> {
+    return this.http.get<Leaderboard>(`${API}/leaderboard`);
   }
 
   // Persist the ship's position. Called periodically, not every frame.

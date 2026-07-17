@@ -15,6 +15,7 @@ import { PresenceService } from './presence.service';
 import {
   GameState,
   Inventory,
+  Leaderboard,
   Port,
   Resource,
   RESOURCES,
@@ -58,6 +59,13 @@ export class Game implements AfterViewInit, OnDestroy {
   readonly quantityOptions = [1, 5, 10, 50];
   // Whether the full-world map overlay is open.
   readonly showMap = signal(false);
+
+  // Leaderboard overlay: the richest players ever, fetched on demand when the
+  // panel is opened (rankings change slowly, so there's no need to poll).
+  readonly showLeaderboard = signal(false);
+  readonly leaderboard = signal<Leaderboard | null>(null);
+  readonly leaderboardLoading = signal(false);
+  readonly leaderboardError = signal(false);
 
   // Route planner: two ports picked on the map. The route is a round trip with
   // two legs — port 1 → port 2 (leg 1) and port 2 → port 1 (leg 2) — each of
@@ -222,6 +230,14 @@ export class Game implements AfterViewInit, OnDestroy {
       this.toggleMap();
       return;
     }
+    if (k === 'l') {
+      this.toggleLeaderboard();
+      return;
+    }
+    if (k === 'escape' && this.showLeaderboard()) {
+      this.showLeaderboard.set(false);
+      return;
+    }
     if (MOVE_KEYS.has(k)) {
       // Taking the helm cancels any autopilot voyage in progress.
       if (this.autopilot) this.cancelAutopilot('Voyage cancelled');
@@ -232,6 +248,42 @@ export class Game implements AfterViewInit, OnDestroy {
 
   toggleMap(): void {
     this.showMap.update((v) => !v);
+  }
+
+  // Open (or close) the leaderboard. Each time it's opened we re-fetch, so it
+  // reflects the latest standings — including gold we've earned this session.
+  toggleLeaderboard(): void {
+    const opening = !this.showLeaderboard();
+    this.showLeaderboard.set(opening);
+    if (opening) this.loadLeaderboard();
+  }
+
+  private loadLeaderboard(): void {
+    this.leaderboardLoading.set(true);
+    this.leaderboardError.set(false);
+    this.api.getLeaderboard().subscribe({
+      next: (board) => {
+        this.leaderboard.set(board);
+        this.leaderboardLoading.set(false);
+      },
+      error: () => {
+        this.leaderboardError.set(true);
+        this.leaderboardLoading.set(false);
+      },
+    });
+  }
+
+  // When a peak was reached, as a short local date — or "—" when unknown (older
+  // rows saved before the timestamp existed).
+  achievedLabel(iso: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   }
 
   @HostListener('window:keyup', ['$event'])

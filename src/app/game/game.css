@@ -493,3 +493,125 @@ td.qty input:disabled {
   border: 1px solid var(--teal);
   color: var(--teal);
 }
+
+/* Leaderboard overlay */
+.lb-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 14, 19, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+.leaderboard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 31;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  backdrop-filter: blur(6px);
+  min-width: 340px;
+  max-width: min(440px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.lb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lb-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--gold);
+}
+.lb-close {
+  background: none;
+  border: none;
+  color: var(--ink);
+  opacity: 0.6;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.1rem 0.3rem;
+}
+.lb-close:hover {
+  opacity: 1;
+  color: var(--teal);
+}
+.lb-sub {
+  margin: 0.1rem 0 0.7rem;
+  font-size: 0.75rem;
+  opacity: 0.55;
+}
+.lb-msg {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+.lb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.lb-table th {
+  text-align: right;
+  font-weight: 500;
+  opacity: 0.5;
+  padding: 0.15rem 0.5rem 0.35rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lb-table td {
+  padding: 0.28rem 0.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid rgba(127, 209, 185, 0.1);
+}
+.lb-table th.lb-rank,
+.lb-table th.lb-name,
+.lb-table td.lb-rank,
+.lb-table td.lb-name {
+  text-align: left;
+}
+.lb-table td.lb-rank {
+  opacity: 0.6;
+  width: 2rem;
+}
+.lb-table td.lb-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.lb-table td.lb-gold {
+  color: var(--gold);
+  font-weight: 600;
+}
+.lb-table td.lb-when {
+  opacity: 0.5;
+  font-size: 0.78rem;
+}
+/* The requesting player's own row, highlighted wherever it appears (this beats
+   the gold colour on the peak-gold cell by specificity). */
+.lb-table tr.me td {
+  color: var(--teal);
+}
+.lb-you {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(127, 209, 185, 0.18);
+  color: var(--teal);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+/* Separator between the top list and the player's own out-of-top row. */
+.lb-table tr.lb-gap td {
+  text-align: center;
+  opacity: 0.35;
+  padding: 0.1rem;
+  border-top: none;
+}
